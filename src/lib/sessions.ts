@@ -9,7 +9,7 @@ export type PaymentSession = {
   amountApplied: number | null;
   razorpayOrderId: string | null;
   razorpayPaymentLinkId: string | null;
-  razorpayPayloadJson?: { short_url?: string } | null;
+  razorpayPayloadJson?: { short_url?: string; image_url?: string; id?: string } | null;
 };
 
 export function getSessionById(sessionId: number, token: string) {

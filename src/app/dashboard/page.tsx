@@ -19,12 +19,7 @@ import { getPortalProfile, getPortalToken } from "@/lib/auth";
 import { addSessionHistory } from "@/lib/session-history";
 import { useIsClient } from "@/lib/use-is-client";
 import { AnimatedAmount, Stagger, StaggerItem } from "@/components/motion";
-
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
-  }
-}
+import { getPaymentSessionRoute } from "@/lib/payment-flow";
 
 type QuoteData = {
   queueItemType?: "BOOKING" | "ORDER";
@@ -71,30 +66,12 @@ type SessionCreateResponse = {
   };
 };
 
-const RAZORPAY_CHECKOUT_JS = "https://checkout.razorpay.com/v1/checkout.js";
-
 function getErrorMessage(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
 }
 
 function inr(n: number) {
   return n.toLocaleString("en-IN");
-}
-
-async function ensureRazorpayLoaded(): Promise<boolean> {
-  if (typeof window === "undefined") return false;
-  if (window.Razorpay) return true;
-
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = RAZORPAY_CHECKOUT_JS;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Razorpay checkout script"));
-    document.body.appendChild(script);
-  });
-
-  return Boolean(window.Razorpay);
 }
 
 /* mobile = bottom sheet, desktop = right drawer */
@@ -431,50 +408,15 @@ export default function DashboardPage() {
                           createdAt: new Date().toISOString(),
                           amountRequested: input.amountRequested,
                         });
-                        if (
-                          result.razorpay.mode === "CHECKOUT_REDIRECT" &&
-                          result.razorpay.keyId &&
-                          result.razorpay.orderId &&
-                          result.razorpay.amount &&
-                          result.razorpay.currency
-                        ) {
-                          const loaded = await ensureRazorpayLoaded();
-                          if (!loaded || !window.Razorpay) {
-                            throw new Error("Razorpay checkout is unavailable");
-                          }
-
-                          const checkout = new window.Razorpay({
-                            key: result.razorpay.keyId,
-                            amount: result.razorpay.amount,
-                            currency: result.razorpay.currency,
-                            order_id: result.razorpay.orderId,
-                            name: "Zenvana Payments",
-                            description: `Session #${result.session.id}`,
-                            handler: () => {
-                              router.push(`/payment/${result.session.id}`);
+                        router.push(
+                          getPaymentSessionRoute({
+                            sessionId: result.session.id,
+                            razorpay: {
+                              mode: result.razorpay.mode,
+                              paymentLinkUrl: result.razorpay.paymentLinkUrl,
                             },
-                            modal: {
-                              ondismiss: () => {
-                                router.push(`/payment/${result.session.id}`);
-                              },
-                            },
-                          });
-                          checkout.open();
-                          return;
-                        }
-
-                        if (
-                          result.razorpay.mode === "PAYMENT_LINK" &&
-                          result.razorpay.paymentLinkUrl
-                        ) {
-                          router.push(
-                            `/payment/${result.session.id}?paymentLink=${encodeURIComponent(
-                              result.razorpay.paymentLinkUrl
-                            )}`
-                          );
-                          return;
-                        }
-                        router.push(`/payment/${result.session.id}`);
+                          })
+                        );
                       } catch (err: unknown) {
                         setError(getErrorMessage(err, "Failed to create session"));
                       }

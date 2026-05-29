@@ -4,6 +4,8 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowLeft, Check, Copy, Loader2 } from "lucide-react";
+import Image from "next/image";
+import QRCode from "qrcode";
 import { apiGet } from "@/lib/api-client";
 import { getPortalToken } from "@/lib/auth";
 import { Input } from "@/components/ui/input";
@@ -18,7 +20,7 @@ type SessionData = {
   amountApplied: number | null;
   razorpayOrderId: string | null;
   razorpayPaymentLinkId: string | null;
-  razorpayPayloadJson?: { short_url?: string } | null;
+  razorpayPayloadJson?: { short_url?: string; image_url?: string; id?: string } | null;
 };
 
 function getErrorMessage(err: unknown, fallback: string) {
@@ -33,6 +35,7 @@ export default function PaymentSessionPage() {
   const [session, setSession] = useState<SessionData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [generatedQrDataUrl, setGeneratedQrDataUrl] = useState("");
   const sessionIdRaw = Array.isArray(params.sessionId) ? params.sessionId[0] : params.sessionId;
   const token = isClient ? getPortalToken() : null;
   const sessionId = Number(sessionIdRaw);
@@ -65,6 +68,33 @@ export default function PaymentSessionPage() {
 
   const paymentLink =
     searchParams.get("paymentLink") ?? session?.razorpayPayloadJson?.short_url ?? "";
+  const qrImageUrl = session?.razorpayPayloadJson?.image_url ?? "";
+
+  useEffect(() => {
+    let cancelled = false;
+    const buildLinkQr = async () => {
+      if (!paymentLink || qrImageUrl) {
+        if (!cancelled) setGeneratedQrDataUrl("");
+        return;
+      }
+      try {
+        const dataUrl = await QRCode.toDataURL(paymentLink, {
+          margin: 1,
+          width: 320,
+        });
+        if (!cancelled) setGeneratedQrDataUrl(dataUrl);
+      } catch {
+        if (!cancelled) setGeneratedQrDataUrl("");
+      }
+    };
+
+    void buildLinkQr();
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentLink, qrImageUrl]);
+  const qrDisplaySource = qrImageUrl || generatedQrDataUrl;
+
 
   const captured = useMemo(() => {
     const s = (session?.status ?? "").toUpperCase();
@@ -202,6 +232,29 @@ export default function PaymentSessionPage() {
             ))}
           </div>
 
+          {qrDisplaySource ? (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="quiet-card p-5"
+            >
+              <p className="field-label">Scan to pay</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Ask the guest to scan this QR and complete payment.
+              </p>
+              <div className="mt-3 rounded-2xl border border-border/70 bg-background/70 p-4">
+                <Image
+                  src={qrDisplaySource}
+                  alt="Payment QR"
+                  className="mx-auto size-[220px] max-w-full rounded-lg bg-white p-2"
+                  width={220}
+                  height={220}
+                  unoptimized
+                />
+              </div>
+            </motion.div>
+          ) : null}
+
           {/* payment link */}
           {paymentLink ? (
             <motion.div
@@ -223,6 +276,14 @@ export default function PaymentSessionPage() {
                   {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                   {copied ? "Copied" : "Copy"}
                 </button>
+                <a
+                  href={paymentLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-11 shrink-0 items-center rounded-xl border border-border/70 px-4 text-sm font-semibold text-foreground transition hover:bg-muted active:scale-95"
+                >
+                  Open
+                </a>
               </div>
             </motion.div>
           ) : null}
