@@ -1,7 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { vi } from "vitest";
 import HomePage from "./page";
+import { redirect } from "next/navigation";
 
-it("renders payments portal heading", () => {
-  render(<HomePage />);
-  expect(screen.getByText("Zenvana Payments Portal")).toBeInTheDocument();
+vi.mock("next/navigation", () => ({
+  redirect: vi.fn(),
+}));
+
+it("redirects root path to dashboard", () => {
+  HomePage();
+  expect(redirect).toHaveBeenCalledWith("/dashboard");
 });

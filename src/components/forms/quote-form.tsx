@@ -41,7 +41,7 @@ export default function QuoteForm({
 
   return (
     <form
-      className="mt-4 flex flex-col gap-4 rounded-md border p-4"
+      className="quiet-card flex flex-col gap-4 p-4 sm:p-5"
       onSubmit={form.handleSubmit(async (values) => {
         await onSubmit({
           bookingId: values.bookingId ? Number(values.bookingId) : undefined,
@@ -49,17 +49,24 @@ export default function QuoteForm({
         });
       })}
     >
-      <label className="flex flex-col gap-1 text-sm">
-        Booking ID
-        <Input aria-label="Booking ID" {...form.register("bookingId")} />
+      <div>
+        <p className="field-label">Quote source</p>
+        <h2 className="mt-1 text-lg font-semibold tracking-tight">Fetch due amount</h2>
+      </div>
+
+      <label className="flex flex-col gap-1.5 text-sm">
+        <span className="field-label">Booking ID</span>
+        <Input aria-label="Booking ID" {...form.register("bookingId")} className="h-10 rounded-xl" />
       </label>
 
-      <label className="flex flex-col gap-1 text-sm">
-        Order ID
-        <Input aria-label="Order ID" {...form.register("orderId")} />
+      <label className="flex flex-col gap-1.5 text-sm">
+        <span className="field-label">Order ID</span>
+        <Input aria-label="Order ID" {...form.register("orderId")} className="h-10 rounded-xl" />
       </label>
 
-      <Button type="submit">Get Quote</Button>
+      <Button type="submit" className="h-10 rounded-xl">
+        Get Quote
+      </Button>
     </form>
   );
 }
