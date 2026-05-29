@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import HomePage from "./page";
 import { redirect } from "next/navigation";
 

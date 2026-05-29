@@ -51,7 +51,7 @@ function buildEmbers(): Ember[] {
 
 export function InitialSplash() {
   const [phase, setPhase] = useState<SplashPhase>('visible')
-  const embers = useMemo(buildEmbers, [])
+  const embers = useMemo(() => buildEmbers(), [])
 
   useEffect(() => {
     let cancelled = false
@@ -138,19 +138,19 @@ export function InitialSplash() {
         <p className="zv-welcome text-[10px] uppercase text-white/55">Welcome to</p>
 
         <h1 className="zv-title mt-3 text-3xl font-semibold tracking-[0.18em] text-white sm:text-4xl">
-          Zenvana
+          Zenvana Payments
         </h1>
 
         <div className="zv-logo-wrap mx-auto mt-4">
           <Image
-            src="/Zenvana%20logo/Zenvana%20logo%20(1).svg"
+            src="/Zenvana%20logo/icon.svg"
             alt="Zenvana"
-            width={320}
-            height={112}
-            className="zv-logo mx-auto h-auto w-[clamp(180px,38vw,320px)]"
+            width={220}
+            height={220}
+            className="zv-logo mx-auto h-auto w-[clamp(140px,24vw,220px)]"
             priority
             unoptimized
-            sizes="(max-width: 640px) 180px, (max-width: 1024px) 38vw, 320px"
+            sizes="(max-width: 640px) 140px, (max-width: 1024px) 24vw, 220px"
           />
         </div>
 

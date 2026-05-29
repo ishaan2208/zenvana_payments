@@ -2,6 +2,7 @@ import { apiGet } from "@/lib/api-client";
 
 export type PaymentSession = {
   id: number;
+  createdAt?: string;
   status: string;
   amountRequested: number;
   amountCaptured: number | null;
@@ -13,4 +14,8 @@ export type PaymentSession = {
 
 export function getSessionById(sessionId: number, token: string) {
   return apiGet<PaymentSession>(`/sessions/${sessionId}`, token);
+}
+
+export function getMySessions(token: string) {
+  return apiGet<PaymentSession[]>("/sessions", token);
 }

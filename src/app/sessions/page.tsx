@@ -1,34 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCcw, Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ArrowRight, Receipt, Inbox } from "lucide-react";
 import { getPortalToken } from "@/lib/auth";
-import { getSessionHistory } from "@/lib/session-history";
-import { getSessionById, type PaymentSession } from "@/lib/sessions";
-import { SessionStatusChip } from "@/components/session-status-chip";
+import SessionStatusChip from "@/components/session-status-chip";
+import { getMySessions, type PaymentSession } from "@/lib/sessions";
 import { useIsClient } from "@/lib/use-is-client";
+import { FadeIn, Stagger, StaggerItem, AnimatedAmount } from "@/components/motion";
 
-type SessionListItem = PaymentSession & {
-  historyCreatedAt: string;
-};
+function createdLabel(isoDate?: string) {
+  if (!isoDate) return "Created recently";
+  const parsed = Date.parse(isoDate);
+  if (Number.isNaN(parsed)) return "Created recently";
+  return new Date(parsed).toLocaleString("en-IN", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
-function getErrorMessage(err: unknown, fallback: string) {
-  return err instanceof Error ? err.message : fallback;
+// status → accent rail colour (uses existing theme vars)
+function railTone(status: string) {
+  const s = status.toUpperCase();
+  if (s.includes("CAPTUR") || s === "PAID" || s.includes("APPLIED")) return "var(--success)";
+  if (s.includes("FAIL") || s.includes("CANCEL")) return "var(--destructive)";
+  if (s.includes("PEND") || s.includes("CREATED")) return "var(--accent)";
+  return "var(--chart-3)";
 }
 
 export default function SessionsPage() {
   const router = useRouter();
   const isClient = useIsClient();
+  const token = isClient ? getPortalToken() : null;
+  const [sessions, setSessions] = useState<PaymentSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<SessionListItem[]>([]);
-  const [query, setQuery] = useState("");
-  const [refreshTick, setRefreshTick] = useState(0);
-  const token = isClient ? getPortalToken() : null;
 
   useEffect(() => {
     if (!token) {
@@ -36,174 +45,172 @@ export default function SessionsPage() {
       return;
     }
 
-    let closed = false;
+    let cancelled = false;
     const load = async () => {
-      setLoading(true);
       setError(null);
-
       try {
-        const history = getSessionHistory();
-        if (!history.length) {
-          if (!closed) setSessions([]);
-          return;
-        }
-
-        const results = await Promise.all(
-          history.map(async (item) => {
-            try {
-              const session = await getSessionById(item.id, token);
-              return {
-                ...session,
-                historyCreatedAt: item.createdAt,
-              } satisfies SessionListItem;
-            } catch {
-              return null;
-            }
-          })
-        );
-
-        const resolved = results.filter((item): item is SessionListItem => Boolean(item));
-        if (!closed) setSessions(resolved);
+        const data = await getMySessions(token);
+        if (!cancelled) setSessions(data);
       } catch (err: unknown) {
-        if (!closed) setError(getErrorMessage(err, "Failed to load session history"));
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Failed to load sessions");
+        }
       } finally {
-        if (!closed) setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     void load();
     return () => {
-      closed = true;
+      cancelled = true;
     };
-  }, [router, refreshTick, token]);
+  }, [router, token]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return sessions;
-    return sessions.filter((session) => {
-      return (
-        String(session.id).includes(q) ||
-        session.status.toLowerCase().includes(q) ||
-        String(session.razorpayOrderId ?? "").toLowerCase().includes(q)
-      );
-    });
-  }, [sessions, query]);
+  // presentational summary derived from fetched data (no logic change)
+  const totalCaptured = useMemo(
+    () => sessions.reduce((sum, s) => sum + (s.amountCaptured ?? 0), 0),
+    [sessions]
+  );
 
   if (!isClient || !token) return null;
 
   return (
-    <section className="space-y-4 pb-2">
-      <div className="quiet-card p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="field-label">History</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">Past Sessions</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Sessions created by this logged-in user on this device.
-            </p>
+    <section className="mx-auto w-full max-w-2xl space-y-5">
+      {/* header card */}
+      <FadeIn>
+        <div className="quiet-card p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="grid size-9 shrink-0 place-items-center rounded-full border border-border/70 bg-card/60 text-foreground backdrop-blur transition hover:bg-muted active:scale-95"
+              aria-label="Back to dashboard"
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+            <div className="min-w-0">
+              <p className="eyebrow">Sessions</p>
+              <h1 className="display mt-0.5 text-xl sm:text-2xl">Session history</h1>
+            </div>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="h-10 rounded-full"
-            onClick={() => setRefreshTick((value) => value + 1)}
-          >
-            <RefreshCcw className="size-3.5" />
-            Refresh
-          </Button>
+          {!loading && sessions.length > 0 ? (
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
+                <p className="eyebrow">Sessions</p>
+                <span className="display mt-1.5 block text-2xl tnum">{sessions.length}</span>
+              </div>
+              <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
+                <p className="eyebrow">Total captured</p>
+                <AnimatedAmount value={totalCaptured} className="display mt-1.5 block text-2xl" />
+              </div>
+            </div>
+          ) : null}
         </div>
-
-        <div className="mt-4 flex items-center gap-2">
-          <div className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" />
-            <Input
-              aria-label="Search sessions"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by session id, status, order id"
-              className="h-10 rounded-xl pl-9"
-            />
-          </div>
-        </div>
-      </div>
+      </FadeIn>
 
       {error ? (
-        <div className="quiet-card border-destructive/40 p-4 text-sm text-destructive">{error}</div>
+        <p className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </p>
       ) : null}
 
+      {/* loading skeletons */}
       {loading ? (
-        <div className="quiet-card p-4 text-sm text-muted-foreground">Loading session history...</div>
-      ) : null}
-
-      {!loading && !filtered.length ? (
-        <div className="quiet-card p-6 text-center">
-          <h2 className="text-lg font-semibold">No sessions yet</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Create a payment session from dashboard, then it will appear here.
-          </p>
-          <Link
-            href="/dashboard"
-            className="mt-4 inline-flex rounded-full border border-border/70 bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-          >
-            Go to dashboard
-          </Link>
+        <div className="grid gap-3">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className="h-[120px] animate-pulse rounded-3xl border border-border/50 bg-card/50"
+            />
+          ))}
         </div>
       ) : null}
 
-      <div className="grid gap-3">
-        {filtered.map((session) => (
-          <article key={session.id} className="quiet-card p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="field-label">Session</p>
-                <h3 className="text-lg font-semibold">#{session.id}</h3>
-              </div>
-              <SessionStatusChip status={session.status} />
+      {/* empty state */}
+      {!loading && sessions.length === 0 ? (
+        <FadeIn>
+          <div className="quiet-card flex flex-col items-center gap-3 p-10 text-center">
+            <span className="grid size-12 place-items-center rounded-2xl bg-accent/15 text-accent-foreground">
+              <Inbox className="size-5" />
+            </span>
+            <div>
+              <h3 className="display text-base">No sessions yet</h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Collected payments will appear here. Start one from the dashboard.
+              </p>
             </div>
+            <Link
+              href="/dashboard"
+              className="mt-1 inline-flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-foreground shadow-[0_14px_30px_-14px_var(--accent)] transition hover:brightness-105"
+            >
+              Go to dashboard <ArrowRight className="size-4" />
+            </Link>
+          </div>
+        </FadeIn>
+      ) : null}
 
-            <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-              <div>
-                <dt className="text-muted-foreground">Requested</dt>
-                <dd className="font-medium">₹{session.amountRequested}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Captured</dt>
-                <dd className="font-medium">₹{session.amountCaptured ?? "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Applied</dt>
-                <dd className="font-medium">₹{session.amountApplied ?? "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Created</dt>
-                <dd className="font-medium">
-                  {new Date(session.historyCreatedAt).toLocaleString("en-IN")}
-                </dd>
-              </div>
-            </dl>
+      {/* session list */}
+      {!loading && sessions.length > 0 ? (
+        <Stagger className="grid gap-3">
+          {sessions.map((session) => {
+            const requested = session.amountRequested ?? 0;
+            const captured = session.amountCaptured ?? 0;
+            const applied = session.amountApplied;
+            const status = session.status ?? "CREATED";
 
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Link
-                href={`/payment/${session.id}`}
-                className="inline-flex rounded-full border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+            return (
+              <StaggerItem
+                key={session.id}
+                className="group relative overflow-hidden rounded-3xl border border-border/70 bg-card/85 shadow-[0_12px_28px_-24px_rgba(0,31,63,0.5)] backdrop-blur transition hover:border-accent/40 hover:shadow-[var(--shadow-card)]"
               >
-                Open session
-              </Link>
-              {session.razorpayPayloadJson?.short_url ? (
-                <a
-                  href={session.razorpayPayloadJson.short_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex rounded-full border border-border/70 bg-background px-3 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
-                >
-                  Open payment link
-                </a>
-              ) : null}
-            </div>
-          </article>
-        ))}
-      </div>
+                {/* status accent rail */}
+                <span
+                  aria-hidden
+                  className="absolute inset-y-0 left-0 w-1"
+                  style={{ backgroundColor: railTone(status) }}
+                />
+
+                <Link href={`/payment/${session.id}`} className="block px-4 py-4 pl-5 sm:px-5 sm:pl-6">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className="grid size-9 place-items-center rounded-xl bg-muted/70 text-muted-foreground">
+                        <Receipt className="size-[18px]" />
+                      </span>
+                      <div>
+                        <p className="text-sm font-semibold">Session #{session.id}</p>
+                        <p className="text-xs text-muted-foreground">{createdLabel(session.createdAt)}</p>
+                      </div>
+                    </div>
+                    <SessionStatusChip status={status} />
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Requested</p>
+                      <p className="tnum mt-0.5 text-sm font-semibold">₹{requested.toLocaleString("en-IN")}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Captured</p>
+                      <p className="tnum mt-0.5 text-sm font-semibold">₹{captured.toLocaleString("en-IN")}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Applied</p>
+                      <p className="tnum mt-0.5 text-sm font-semibold">
+                        {applied != null ? `₹${applied.toLocaleString("en-IN")}` : "—"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="pointer-events-none absolute bottom-4 right-4 inline-flex size-7 items-center justify-center rounded-full bg-accent/10 text-accent-foreground opacity-0 transition group-hover:opacity-100 sm:bottom-5 sm:right-5">
+                    <ArrowRight className="size-4" />
+                  </span>
+                </Link>
+              </StaggerItem>
+            );
+          })}
+        </Stagger>
+      ) : null}
     </section>
   );
 }

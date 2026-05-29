@@ -2,144 +2,173 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CreditCard, History, LayoutDashboard, LogOut } from "lucide-react";
-import { BrandLogo } from "@/components/brand-logo";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "framer-motion";
 import {
-  clearPortalProfile,
-  clearPortalToken,
-  getPortalProfile,
-  type PortalProfile,
-} from "@/lib/auth";
+  CreditCard,
+  History,
+  LogOut,
+  Moon,
+  Sun,
+  Building2,
+  UtensilsCrossed,
+} from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
+import { clearPortalSession, getPortalProfile } from "@/lib/auth";
 import { useIsClient } from "@/lib/use-is-client";
+import { cn } from "@/lib/utils";
 
-function isActivePath(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/sessions", label: "Sessions", icon: History },
+const NAV = [
+  { href: "/dashboard", label: "Collect", Icon: CreditCard },
+  { href: "/sessions", label: "History", Icon: History },
 ];
 
+function useTheme() {
+  const [dark, setDark] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const stored = window.localStorage.getItem("zenvana-theme");
+    if (stored) return stored === "dark";
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    document.documentElement.classList.toggle("dark", dark);
+    window.localStorage.setItem("zenvana-theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  const toggle = () => {
+    setDark((d) => !d);
+  };
+  return { dark, toggle };
+}
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname() ?? "/";
+  const pathname = usePathname();
   const router = useRouter();
   const isClient = useIsClient();
-  const isLogin = pathname.startsWith("/login");
-  const profile: PortalProfile | null = isClient ? getPortalProfile() : null;
+  const { dark, toggle } = useTheme();
+  const profile = useMemo(() => (isClient ? getPortalProfile() : null), [isClient]);
+  const scope = profile?.portalScope ?? "PROPERTY";
+  const ScopeIcon = scope === "RESTAURANT" ? UtensilsCrossed : Building2;
 
-  if (isLogin) {
-    return <>{children}</>;
-  }
+  const activeIndex = NAV.findIndex((n) => pathname?.startsWith(n.href));
+
+  const onLogout = () => {
+    clearPortalSession?.();
+    router.replace("/login");
+  };
 
   return (
-    <div className="shell">
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/95 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
-        <div className="container-shell">
-          <div className="flex min-h-[72px] items-center justify-between gap-3">
-            <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
-              <BrandLogo className="shrink-0" />
-              <div className="hidden min-w-0 sm:block">
-                <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
-                  Zenvana
-                </div>
-                <div className="truncate text-sm font-semibold text-foreground">
-                  Payments Portal
-                </div>
-              </div>
-            </Link>
+    <div className="shell ambient grain relative min-h-dvh">
+      {/* ---- top bar ---- */}
+      <header className="sticky top-0 z-30 border-b border-border/50 bg-background/70 backdrop-blur-xl">
+        <div className="container-shell flex h-16 items-center justify-between gap-3">
+          <Link href="/dashboard" className="flex shrink-0 items-center gap-2">
+            <BrandLogo />
+            <span className="inline-flex items-center rounded-full border border-border/70 bg-card/60 px-2.5 py-1 text-[11px] font-semibold text-foreground backdrop-blur">
+              Zenvana Payment
+            </span>
+          </Link>
 
-            <div className="flex items-center gap-2">
-              <ThemeToggle />
-              <button
-                type="button"
-                onClick={() => {
-                  clearPortalToken();
-                  clearPortalProfile();
-                  router.push("/login");
-                }}
-                className="inline-flex h-10 items-center gap-1.5 rounded-full border border-border/70 bg-card px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          <div className="flex items-center gap-2">
+            <span className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground backdrop-blur sm:inline-flex">
+              <ScopeIcon className="size-3.5 text-accent" />
+              {scope === "RESTAURANT" ? "Restaurant" : "Property"}
+            </span>
+
+            <button
+              type="button"
+              onClick={toggle}
+              aria-label="Toggle theme"
+              className="grid size-10 place-items-center rounded-full border border-border/70 bg-card/60 text-foreground backdrop-blur transition hover:bg-muted active:scale-95"
+            >
+              <motion.span
+                key={dark ? "moon" : "sun"}
+                initial={{ rotate: -90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
               >
-                <LogOut className="size-3.5" />
-                <span>Sign out</span>
-              </button>
-            </div>
+                {dark ? <Moon className="size-[18px]" /> : <Sun className="size-[18px]" />}
+              </motion.span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onLogout}
+              aria-label="Log out"
+              className="grid size-10 place-items-center rounded-full border border-border/70 bg-card/60 text-foreground backdrop-blur transition hover:bg-muted active:scale-95"
+            >
+              <LogOut className="size-[17px]" />
+            </button>
           </div>
         </div>
       </header>
 
-      <nav className="border-b border-border/60 bg-card/60 backdrop-blur-xl">
-        <div className="container-shell">
-          <div className="flex items-center gap-2 overflow-x-auto py-2.5">
-            {navItems.map((item) => {
-              const active = isActivePath(pathname, item.href);
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={[
-                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-medium transition-all",
-                    active
-                      ? "border-primary/25 bg-primary/12 text-foreground"
-                      : "border-border/70 bg-background text-muted-foreground hover:text-foreground",
-                  ].join(" ")}
-                >
-                  <Icon className="size-3.5" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-            {profile ? (
-              <div className="ml-auto hidden rounded-full border border-border/60 bg-background px-3 py-1.5 text-[11px] text-muted-foreground md:inline-flex">
-                {profile.firstName} {profile.lastName} · {profile.role}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </nav>
+      {/* ---- desktop side rail + content ---- */}
+      <div className="container-shell flex gap-6 py-5">
+        <aside className="sticky top-24 hidden h-fit w-52 shrink-0 flex-col gap-1 lg:flex">
+          {NAV.map(({ href, label, Icon }) => {
+            const active = pathname?.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "relative flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold transition",
+                  active
+                    ? "text-accent-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {active ? (
+                  <motion.span
+                    layoutId="rail-active"
+                    className="absolute inset-0 rounded-2xl bg-accent"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                ) : null}
+                <Icon className="relative size-[18px]" />
+                <span className="relative">{label}</span>
+              </Link>
+            );
+          })}
+        </aside>
 
-      <main className="container-shell py-5 sm:py-6">{children}</main>
-
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/70 bg-background/95 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl md:hidden">
-        <div className="grid grid-cols-2 gap-2">
-          <Link
-            href="/dashboard"
-            className={[
-              "inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium",
-              isActivePath(pathname, "/dashboard")
-                ? "border-primary/30 bg-primary/12 text-foreground"
-                : "border-border/70 bg-card text-muted-foreground",
-            ].join(" ")}
-          >
-            <LayoutDashboard className="size-3.5" />
-            Dashboard
-          </Link>
-          <Link
-            href="/sessions"
-            className={[
-              "inline-flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-medium",
-              isActivePath(pathname, "/sessions")
-                ? "border-primary/30 bg-primary/12 text-foreground"
-                : "border-border/70 bg-card text-muted-foreground",
-            ].join(" ")}
-          >
-            <History className="size-3.5" />
-            Sessions
-          </Link>
-        </div>
+        <main className="min-w-0 flex-1 pad-nav lg:pb-6">{children}</main>
       </div>
 
-      <div className="h-[74px] md:hidden" />
-      <footer className="mt-6 border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
-        <div className="inline-flex items-center gap-1.5">
-          <CreditCard className="size-3.5" />
-          <span>Zenvana Payments</span>
+      {/* ---- floating mobile bottom nav ---- */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))] lg:hidden">
+        <div className="relative flex gap-1 rounded-full border border-border/70 bg-card/80 p-1.5 shadow-[var(--shadow-lift)] backdrop-blur-xl">
+          {activeIndex >= 0 ? (
+            <motion.span
+              layoutId="nav-active"
+              className="absolute inset-y-1.5 rounded-full bg-accent shadow-[0_8px_20px_-8px_var(--accent)]"
+              style={{ left: `${activeIndex * 50}%`, width: "calc(50% - 0px)" }}
+              transition={{ type: "spring", stiffness: 360, damping: 30 }}
+            />
+          ) : null}
+          {NAV.map(({ href, label, Icon }) => {
+            const active = pathname?.startsWith(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "relative z-10 flex h-11 min-w-[120px] items-center justify-center gap-2 rounded-full text-[13px] font-semibold transition-colors",
+                  active ? "text-accent-foreground" : "text-muted-foreground"
+                )}
+              >
+                <Icon className="size-[18px]" />
+                {label}
+              </Link>
+            );
+          })}
         </div>
-      </footer>
+      </nav>
     </div>
   );
 }
+
+export default AppShell;

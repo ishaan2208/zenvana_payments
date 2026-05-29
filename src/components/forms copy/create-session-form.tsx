@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
@@ -8,7 +8,6 @@ import {
   Layers,
   Link2,
   Loader2,
-  Lock,
   ReceiptText,
   BedDouble,
 } from "lucide-react";
@@ -17,15 +16,12 @@ import { AnimatedAmount, springSoft } from "@/components/motion";
 /**
  * Collect-payment form rendered inside the dashboard drawer.
  *
- * Payload contract (matches the original /sessions form):
- *   { queueItemType, queueItemId, modeSelection, collectionType, amountRequested }
- * The dashboard sends this object verbatim to `apiPost("/sessions", input)`
- * and reads `input.amountRequested` for local history.
- *
- * Business rule preserved from the original:
- *   • BOTH         → amount LOCKED to the exact total due
- *   • ORDERS_ONLY  → amount LOCKED to the exact orders due
- *   • BOOKING_ONLY → amount editable (partial payments allowed)
+ * IMPORTANT — payload contract:
+ * The object emitted by `onSubmit` is sent verbatim to your `/sessions`
+ * endpoint (the dashboard does `apiPost("/sessions", input)`), and the
+ * dashboard also reads `input.amountRequested` for local history.
+ * The fields below are a sensible default shape — adjust `SessionCreateInput`
+ * and the `submit()` payload to match your existing backend contract.
  */
 
 type AllowedMode = "BOOKING_ONLY" | "ORDERS_ONLY" | "BOTH";
@@ -38,15 +34,17 @@ type QuoteData = {
   bookingDue: number;
   ordersDueTotal: number;
   totalDue: number;
-  allowedModes?: AllowedMode[];
+  allowedModes: AllowedMode[];
 };
 
-export type CreateSessionInput = {
+export type SessionCreateInput = {
   queueItemType?: "BOOKING" | "ORDER";
   queueItemId?: number;
-  modeSelection: AllowedMode;
-  collectionType: "PAYMENT_LINK" | "CHECKOUT_REDIRECT";
+  bookingId: number | null;
+  anchorOrderId: number | null;
+  mode: AllowedMode;
   amountRequested: number;
+  method: "CHECKOUT_REDIRECT" | "PAYMENT_LINK";
 };
 
 const MODE_META: Record<
@@ -54,47 +52,37 @@ const MODE_META: Record<
   { label: string; hint: string; icon: typeof Layers; due: (q: QuoteData) => number }
 > = {
   BOTH: { label: "Everything", hint: "Booking + orders", icon: Layers, due: (q) => q.totalDue },
-  BOOKING_ONLY: { label: "Booking", hint: "Partial allowed", icon: BedDouble, due: (q) => q.bookingDue },
+  BOOKING_ONLY: { label: "Booking", hint: "Room dues only", icon: BedDouble, due: (q) => q.bookingDue },
   ORDERS_ONLY: { label: "Orders", hint: "F&B / order dues", icon: ReceiptText, due: (q) => q.ordersDueTotal },
 };
 
 const METHODS: Array<{
-  value: CreateSessionInput["collectionType"];
+  value: SessionCreateInput["method"];
   label: string;
   hint: string;
   icon: typeof CreditCard;
 }> = [
-    { value: "CHECKOUT_REDIRECT", label: "Checkout", hint: "Collect now on this device", icon: CreditCard },
-    { value: "PAYMENT_LINK", label: "Payment link", hint: "Share with the guest", icon: Link2 },
-  ];
-
-const round = (n: number) => Math.max(0, Math.round(n));
+  { value: "CHECKOUT_REDIRECT", label: "Checkout", hint: "Collect now on this device", icon: CreditCard },
+  { value: "PAYMENT_LINK", label: "Payment link", hint: "Share with the guest", icon: Link2 },
+];
 
 export default function CreateSessionForm({
   quote,
   onSubmit,
 }: {
   quote: QuoteData;
-  onSubmit: (input: CreateSessionInput) => Promise<void>;
+  onSubmit: (input: SessionCreateInput) => void | Promise<void>;
 }) {
-  const modes: AllowedMode[] = quote.allowedModes?.length
-    ? quote.allowedModes
-    : ["BOOKING_ONLY", "ORDERS_ONLY", "BOTH"];
-  const initialMode: AllowedMode = modes.includes("BOTH") ? "BOTH" : modes[0];
-
-  const [mode, setMode] = useState<AllowedMode>(initialMode);
-  const [collectionType, setCollectionType] =
-    useState<CreateSessionInput["collectionType"]>("CHECKOUT_REDIRECT");
+  const modes = quote.allowedModes?.length ? quote.allowedModes : (["BOTH"] as AllowedMode[]);
+  const [mode, setMode] = useState<AllowedMode>(modes[0]);
+  const [method, setMethod] = useState<SessionCreateInput["method"]>("CHECKOUT_REDIRECT");
   const [submitting, setSubmitting] = useState(false);
-  // Editable amount only ever applies to BOOKING_ONLY (partial payments).
-  const [bookingStr, setBookingStr] = useState(String(round(quote.bookingDue)));
+  // null means "follow the selected mode's due"; a string means manual override
+  const [override, setOverride] = useState<string | null>(null);
 
-  const editable = mode === "BOOKING_ONLY";
-  const modeDue = round(MODE_META[mode].due(quote));
-  const bookingAmt = round(Number(bookingStr.replace(/[^\d.]/g, "")) || 0);
-  const amount = editable ? bookingAmt : modeDue; // locked modes always use exact due
-  const overBooking = editable && amount > round(quote.bookingDue);
-  const valid = amount > 0 && !overBooking && !submitting;
+  const modeDue = useMemo(() => Math.max(0, Math.round(MODE_META[mode].due(quote))), [mode, quote]);
+  const amount = override === null ? modeDue : Number(override.replace(/[^\d.]/g, "")) || 0;
+  const valid = amount > 0 && !submitting;
 
   const submit = async () => {
     if (!valid) return;
@@ -103,9 +91,11 @@ export default function CreateSessionForm({
       await onSubmit({
         queueItemType: quote.queueItemType,
         queueItemId: quote.queueItemId,
-        modeSelection: mode,
-        collectionType,
+        bookingId: quote.bookingId,
+        anchorOrderId: quote.anchorOrderId,
+        mode,
         amountRequested: amount,
+        method,
       });
     } finally {
       setSubmitting(false);
@@ -120,9 +110,9 @@ export default function CreateSessionForm({
         <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-white/70">Payable now</p>
         <AnimatedAmount value={amount} className="mt-1 block text-4xl font-semibold tracking-tight" />
         <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-white/75">
-          <span>Booking ₹{round(quote.bookingDue).toLocaleString("en-IN")}</span>
-          <span>Orders ₹{round(quote.ordersDueTotal).toLocaleString("en-IN")}</span>
-          <span>Total ₹{round(quote.totalDue).toLocaleString("en-IN")}</span>
+          <span>Booking due ₹{Math.round(quote.bookingDue).toLocaleString("en-IN")}</span>
+          <span>Orders due ₹{Math.round(quote.ordersDueTotal).toLocaleString("en-IN")}</span>
+          <span>Total ₹{Math.round(quote.totalDue).toLocaleString("en-IN")}</span>
         </div>
       </div>
 
@@ -130,10 +120,7 @@ export default function CreateSessionForm({
       {modes.length > 1 ? (
         <div>
           <label className="field-label mb-1.5 block">Collect for</label>
-          <div
-            className="grid gap-2"
-            style={{ gridTemplateColumns: `repeat(${modes.length}, minmax(0,1fr))` }}
-          >
+          <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${modes.length}, minmax(0,1fr))` }}>
             {modes.map((m) => {
               const Icon = MODE_META[m].icon;
               const active = mode === m;
@@ -141,9 +128,15 @@ export default function CreateSessionForm({
                 <button
                   key={m}
                   type="button"
-                  onClick={() => setMode(m)}
-                  className={`relative flex flex-col items-start gap-1 rounded-2xl border p-3 text-left transition ${active ? "border-accent bg-accent/10" : "border-input bg-card/60 hover:border-accent/50"
-                    }`}
+                  onClick={() => {
+                    setMode(m);
+                    setOverride(null);
+                  }}
+                  className={`relative flex flex-col items-start gap-1 rounded-2xl border p-3 text-left transition ${
+                    active
+                      ? "border-accent bg-accent/10"
+                      : "border-input bg-card/60 hover:border-accent/50"
+                  }`}
                 >
                   {active ? (
                     <motion.span
@@ -162,63 +155,52 @@ export default function CreateSessionForm({
         </div>
       ) : null}
 
-      {/* amount — locked for BOTH / ORDERS_ONLY, editable for BOOKING_ONLY */}
+      {/* amount */}
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <label className="field-label">Amount</label>
-          {editable && amount !== round(quote.bookingDue) ? (
+          {override !== null && amount !== modeDue ? (
             <button
               type="button"
-              onClick={() => setBookingStr(String(round(quote.bookingDue)))}
+              onClick={() => setOverride(null)}
               className="text-[11px] font-medium text-accent-foreground/80 underline-offset-2 hover:underline"
             >
-              Reset to ₹{round(quote.bookingDue).toLocaleString("en-IN")}
+              Reset to ₹{modeDue.toLocaleString("en-IN")}
             </button>
           ) : null}
         </div>
-
         <div className="relative">
           <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base font-semibold text-muted-foreground">
             ₹
           </span>
           <input
             inputMode="decimal"
-            disabled={!editable}
-            value={editable ? bookingStr : String(modeDue)}
-            onChange={(e) => setBookingStr(e.target.value)}
-            onFocus={(e) => requestAnimationFrame(() => e.target.select())}
-            aria-label="Amount"
-            className={`tnum h-13 w-full rounded-2xl border pl-9 pr-11 text-lg font-semibold text-foreground outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20 ${editable ? "border-input bg-card/70" : "cursor-not-allowed border-input/70 bg-muted/60 opacity-80"
-              }`}
+            value={override === null ? String(modeDue) : override}
+            onChange={(e) => setOverride(e.target.value)}
+            onFocus={(e) => {
+              if (override === null) setOverride(String(modeDue));
+              requestAnimationFrame(() => e.target.select());
+            }}
+            className="tnum h-13 w-full rounded-2xl border border-input bg-card/70 pl-9 pr-4 text-lg font-semibold text-foreground outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/20"
           />
-          {!editable ? (
-            <Lock className="pointer-events-none absolute right-4 top-1/2 size-[15px] -translate-y-1/2 text-muted-foreground" />
-          ) : null}
         </div>
-
-        <p className="mt-1.5 text-xs text-muted-foreground">
-          {editable
-            ? overBooking
-              ? `Cannot exceed booking due of ₹${round(quote.bookingDue).toLocaleString("en-IN")}.`
-              : `Partial amount allowed · due ₹${round(quote.bookingDue).toLocaleString("en-IN")}.`
-            : `Locked to the exact ${MODE_META[mode].label.toLowerCase()} due for ${mode} mode.`}
-        </p>
       </div>
 
-      {/* collection type */}
+      {/* method */}
       <div>
         <label className="field-label mb-1.5 block">How to collect</label>
         <div className="grid grid-cols-2 gap-2">
           {METHODS.map((opt) => {
             const Icon = opt.icon;
-            const active = collectionType === opt.value;
+            const active = method === opt.value;
             return (
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => setCollectionType(opt.value)}
-                className={`relative flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition ${active ? "border-accent bg-accent/10" : "border-input bg-card/60 hover:border-accent/50"
-                  }`}
+                onClick={() => setMethod(opt.value)}
+                className={`relative flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition ${
+                  active ? "border-accent bg-accent/10" : "border-input bg-card/60 hover:border-accent/50"
+                }`}
               >
                 {active ? (
                   <motion.span
@@ -249,7 +231,7 @@ export default function CreateSessionForm({
           </>
         ) : (
           <>
-            {collectionType === "PAYMENT_LINK" ? "Generate payment link" : "Continue to checkout"}
+            {method === "PAYMENT_LINK" ? "Generate payment link" : "Continue to checkout"}
             <ArrowRight className="size-[18px]" />
           </>
         )}

@@ -55,3 +55,8 @@ export function clearPortalProfile(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(PROFILE_KEY);
 }
+
+export function clearPortalSession(): void {
+  clearPortalToken();
+  clearPortalProfile();
+}
