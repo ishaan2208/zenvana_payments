@@ -4,9 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
-  CreditCard,
   Layers,
-  Link2,
   Loader2,
   Lock,
   ReceiptText,
@@ -58,16 +56,6 @@ const MODE_META: Record<
   ORDERS_ONLY: { label: "Orders", hint: "F&B / order dues", icon: ReceiptText, due: (q) => q.ordersDueTotal },
 };
 
-const METHODS: Array<{
-  value: CreateSessionInput["collectionType"];
-  label: string;
-  hint: string;
-  icon: typeof CreditCard;
-}> = [
-    { value: "CHECKOUT_REDIRECT", label: "Checkout", hint: "Collect now on this device", icon: CreditCard },
-    { value: "PAYMENT_LINK", label: "Payment link", hint: "Share with the guest", icon: Link2 },
-  ];
-
 const round = (n: number) => Math.max(0, Math.round(n));
 
 export default function CreateSessionForm({
@@ -83,8 +71,7 @@ export default function CreateSessionForm({
   const initialMode: AllowedMode = modes.includes("BOTH") ? "BOTH" : modes[0];
 
   const [mode, setMode] = useState<AllowedMode>(initialMode);
-  const [collectionType, setCollectionType] =
-    useState<CreateSessionInput["collectionType"]>("CHECKOUT_REDIRECT");
+  const collectionType: CreateSessionInput["collectionType"] = "CHECKOUT_REDIRECT";
   const [submitting, setSubmitting] = useState(false);
   // Editable amount only ever applies to BOOKING_ONLY (partial payments).
   const [bookingStr, setBookingStr] = useState(String(round(quote.bookingDue)));
@@ -205,37 +192,6 @@ export default function CreateSessionForm({
         </p>
       </div>
 
-      {/* collection type */}
-      <div>
-        <label className="field-label mb-1.5 block">How to collect</label>
-        <div className="grid grid-cols-2 gap-2">
-          {METHODS.map((opt) => {
-            const Icon = opt.icon;
-            const active = collectionType === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => setCollectionType(opt.value)}
-                className={`relative flex flex-col items-start gap-1.5 rounded-2xl border p-3.5 text-left transition ${active ? "border-accent bg-accent/10" : "border-input bg-card/60 hover:border-accent/50"
-                  }`}
-              >
-                {active ? (
-                  <motion.span
-                    layoutId="method-glow"
-                    transition={springSoft}
-                    className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-accent/40"
-                  />
-                ) : null}
-                <Icon className={`size-5 ${active ? "text-accent-foreground" : "text-muted-foreground"}`} />
-                <span className="text-sm font-semibold">{opt.label}</span>
-                <span className="text-[11px] leading-tight text-muted-foreground">{opt.hint}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       <motion.button
         type="button"
         whileTap={{ scale: 0.97 }}
@@ -249,7 +205,7 @@ export default function CreateSessionForm({
           </>
         ) : (
           <>
-            {collectionType === "PAYMENT_LINK" ? "Generate payment link" : "Continue to checkout"}
+            Continue to checkout
             <ArrowRight className="size-[18px]" />
           </>
         )}
