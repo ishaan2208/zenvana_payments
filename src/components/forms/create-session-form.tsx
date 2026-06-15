@@ -145,7 +145,7 @@ export default function CreateSessionForm({
                       className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-accent/40"
                     />
                   ) : null}
-                  <Icon className={`size-[18px] ${active ? "text-accent-foreground" : "text-muted-foreground"}`} />
+                  <Icon className={`size-[18px] ${active ? "text-accent" : "text-muted-foreground"}`} />
                   <span className="text-sm font-semibold">{MODE_META[m].label}</span>
                   <span className="text-[11px] text-muted-foreground">{MODE_META[m].hint}</span>
                 </button>
@@ -163,7 +163,7 @@ export default function CreateSessionForm({
             <button
               type="button"
               onClick={() => setBookingStr(String(round(quote.bookingDue)))}
-              className="text-[11px] font-medium text-accent-foreground/80 underline-offset-2 hover:underline"
+              className="text-[11px] font-medium text-accent underline-offset-2 hover:underline"
             >
               Reset to ₹{round(quote.bookingDue).toLocaleString("en-IN")}
             </button>
@@ -204,7 +204,7 @@ export default function CreateSessionForm({
           whileTap={{ scale: 0.97 }}
           onClick={() => void submit("SESSION_PAGE")}
           disabled={!valid}
-          className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-[15px] font-semibold text-accent-foreground shadow-[0_14px_30px_-14px_var(--accent)] transition hover:brightness-105 disabled:opacity-60 sm:order-2"
+          className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-[15px] font-semibold text-accent-foreground shadow-[0_14px_30px_-14px_var(--accent)] transition hover:brightness-105 disabled:opacity-60 sm:order-2 dark:hover:brightness-110"
         >
           {submitting ? (
             <>
@@ -224,7 +224,7 @@ export default function CreateSessionForm({
           whileTap={{ scale: 0.97 }}
           onClick={() => void submit("RAZORPAY_DIRECT")}
           disabled={!valid}
-          className="hidden h-13 w-full items-center justify-center gap-2 rounded-full border border-accent/50 bg-card/80 py-3.5 text-[15px] font-semibold text-accent-foreground transition hover:border-accent hover:bg-accent/10 disabled:opacity-60 sm:inline-flex sm:order-1"
+          className="hidden h-13 w-full items-center justify-center gap-2 rounded-full border border-border bg-background py-3.5 text-[15px] font-semibold text-foreground shadow-sm transition hover:border-accent/70 hover:bg-accent/10 hover:text-accent disabled:opacity-60 sm:inline-flex sm:order-1 dark:border-border dark:bg-secondary/40 dark:hover:border-accent/60 dark:hover:bg-accent/15"
         >
           {submitting ? (
             <>
