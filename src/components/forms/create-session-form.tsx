@@ -4,6 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowRight,
+  CreditCard,
   Layers,
   Loader2,
   Lock,
@@ -47,6 +48,8 @@ export type CreateSessionInput = {
   amountRequested: number;
 };
 
+export type CreateSessionSubmitIntent = "SESSION_PAGE" | "RAZORPAY_DIRECT";
+
 const MODE_META: Record<
   AllowedMode,
   { label: string; hint: string; icon: typeof Layers; due: (q: QuoteData) => number }
@@ -63,7 +66,7 @@ export default function CreateSessionForm({
   onSubmit,
 }: {
   quote: QuoteData;
-  onSubmit: (input: CreateSessionInput) => Promise<void>;
+  onSubmit: (input: CreateSessionInput, intent: CreateSessionSubmitIntent) => Promise<void>;
 }) {
   const modes: AllowedMode[] = quote.allowedModes?.length
     ? quote.allowedModes
@@ -83,17 +86,20 @@ export default function CreateSessionForm({
   const overBooking = editable && amount > round(quote.bookingDue);
   const valid = amount > 0 && !overBooking && !submitting;
 
-  const submit = async () => {
+  const submit = async (intent: CreateSessionSubmitIntent) => {
     if (!valid) return;
     setSubmitting(true);
     try {
-      await onSubmit({
-        queueItemType: quote.queueItemType,
-        queueItemId: quote.queueItemId,
-        modeSelection: mode,
-        collectionType,
-        amountRequested: amount,
-      });
+      await onSubmit(
+        {
+          queueItemType: quote.queueItemType,
+          queueItemId: quote.queueItemId,
+          modeSelection: mode,
+          collectionType,
+          amountRequested: amount,
+        },
+        intent
+      );
     } finally {
       setSubmitting(false);
     }
@@ -192,24 +198,46 @@ export default function CreateSessionForm({
         </p>
       </div>
 
-      <motion.button
-        type="button"
-        whileTap={{ scale: 0.97 }}
-        onClick={() => void submit()}
-        disabled={!valid}
-        className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-[15px] font-semibold text-accent-foreground shadow-[0_14px_30px_-14px_var(--accent)] transition hover:brightness-105 disabled:opacity-60"
-      >
-        {submitting ? (
-          <>
-            <Loader2 className="size-[18px] animate-spin" /> Creating session…
-          </>
-        ) : (
-          <>
-            Continue to checkout
-            <ArrowRight className="size-[18px]" />
-          </>
-        )}
-      </motion.button>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.97 }}
+          onClick={() => void submit("SESSION_PAGE")}
+          disabled={!valid}
+          className="inline-flex h-13 w-full items-center justify-center gap-2 rounded-full bg-accent py-3.5 text-[15px] font-semibold text-accent-foreground shadow-[0_14px_30px_-14px_var(--accent)] transition hover:brightness-105 disabled:opacity-60 sm:order-2"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="size-[18px] animate-spin" /> Creating session…
+            </>
+          ) : (
+            <>
+              <span className="sm:hidden">Continue to checkout</span>
+              <span className="hidden sm:inline">Show QR &amp; link</span>
+              <ArrowRight className="size-[18px]" />
+            </>
+          )}
+        </motion.button>
+
+        <motion.button
+          type="button"
+          whileTap={{ scale: 0.97 }}
+          onClick={() => void submit("RAZORPAY_DIRECT")}
+          disabled={!valid}
+          className="hidden h-13 w-full items-center justify-center gap-2 rounded-full border border-accent/50 bg-card/80 py-3.5 text-[15px] font-semibold text-accent-foreground transition hover:border-accent hover:bg-accent/10 disabled:opacity-60 sm:inline-flex sm:order-1"
+        >
+          {submitting ? (
+            <>
+              <Loader2 className="size-[18px] animate-spin" /> Opening Razorpay…
+            </>
+          ) : (
+            <>
+              <CreditCard className="size-[18px]" />
+              Open Razorpay
+            </>
+          )}
+        </motion.button>
+      </div>
     </div>
   );
 }

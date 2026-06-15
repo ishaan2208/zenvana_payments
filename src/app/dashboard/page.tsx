@@ -13,13 +13,17 @@ import {
   Wallet,
   Layers,
 } from "lucide-react";
-import CreateSessionForm from "@/components/forms/create-session-form";
+import CreateSessionForm, {
+  type CreateSessionInput,
+  type CreateSessionSubmitIntent,
+} from "@/components/forms/create-session-form";
 import { apiGet, apiPost } from "@/lib/api-client";
 import { getPortalProfile, getPortalToken } from "@/lib/auth";
 import { addSessionHistory } from "@/lib/session-history";
 import { useIsClient } from "@/lib/use-is-client";
 import { AnimatedAmount, Stagger, StaggerItem } from "@/components/motion";
 import { getPaymentSessionRoute } from "@/lib/payment-flow";
+import { openRazorpayCheckout } from "@/lib/razorpay-checkout";
 
 type QuoteData = {
   queueItemType?: "BOOKING" | "ORDER";
@@ -68,6 +72,87 @@ type SessionCreateResponse = {
 
 function getErrorMessage(err: unknown, fallback: string) {
   return err instanceof Error ? err.message : fallback;
+}
+
+function finishSessionCreate(
+  result: SessionCreateResponse,
+  input: { amountRequested: number },
+  loadQueue: (showLoading: boolean, resetError: boolean) => Promise<void>,
+  setQuote: (quote: QuoteData | null) => void,
+  setActiveQueueItem: (item: QueueItem | null) => void,
+  setQuoteSheetOpen: (open: boolean) => void
+) {
+  setQuote(null);
+  setActiveQueueItem(null);
+  setQuoteSheetOpen(false);
+  void loadQueue(true, false);
+  addSessionHistory({
+    id: result.session.id,
+    createdAt: new Date().toISOString(),
+    amountRequested: input.amountRequested,
+  });
+  return result;
+}
+
+async function handleSessionSubmit(
+  input: CreateSessionInput,
+  intent: CreateSessionSubmitIntent,
+  deps: {
+    token: string;
+    router: { push: (href: string) => void };
+    setError: (error: string | null) => void;
+    loadQueue: (showLoading: boolean, resetError: boolean) => Promise<void>;
+    setQuote: (quote: QuoteData | null) => void;
+    setActiveQueueItem: (item: QueueItem | null) => void;
+    setQuoteSheetOpen: (open: boolean) => void;
+  }
+) {
+  const { token, router, setError, loadQueue, setQuote, setActiveQueueItem, setQuoteSheetOpen } =
+    deps;
+  setError(null);
+
+  const result = await apiPost<SessionCreateResponse>("/sessions", input, token);
+  const paymentRoute = getPaymentSessionRoute({
+    sessionId: result.session.id,
+    razorpay: {
+      mode: result.razorpay.mode,
+      paymentLinkUrl: result.razorpay.paymentLinkUrl,
+    },
+  });
+
+  if (intent === "RAZORPAY_DIRECT") {
+    const { keyId, orderId, amount, currency } = result.razorpay;
+    if (!keyId || !orderId || amount == null) {
+      finishSessionCreate(result, input, loadQueue, setQuote, setActiveQueueItem, setQuoteSheetOpen);
+      router.push(paymentRoute);
+      return;
+    }
+
+    finishSessionCreate(result, input, loadQueue, setQuote, setActiveQueueItem, setQuoteSheetOpen);
+
+    try {
+      await openRazorpayCheckout({
+        keyId,
+        orderId,
+        amount,
+        currency: currency ?? "INR",
+        onSuccess: async () => {
+          await apiPost(`/sessions/${result.session.id}/verify`, {}, token);
+          router.push(`/payment/${result.session.id}`);
+        },
+        onDismiss: () => {
+          router.push(paymentRoute);
+        },
+      });
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Razorpay checkout failed"));
+      router.push(paymentRoute);
+    }
+    return;
+  }
+
+  finishSessionCreate(result, input, loadQueue, setQuote, setActiveQueueItem, setQuoteSheetOpen);
+  router.push(paymentRoute);
 }
 
 function inr(n: number) {
@@ -391,32 +476,17 @@ export default function DashboardPage() {
                 {!quoteLoading && quote ? (
                   <CreateSessionForm
                     quote={quote}
-                    onSubmit={async (input) => {
-                      setError(null);
+                    onSubmit={async (input, intent) => {
                       try {
-                        const result = await apiPost<SessionCreateResponse>(
-                          "/sessions",
-                          input,
-                          token ?? undefined
-                        );
-                        setQuote(null);
-                        setActiveQueueItem(null);
-                        setQuoteSheetOpen(false);
-                        void loadQueue(true, false);
-                        addSessionHistory({
-                          id: result.session.id,
-                          createdAt: new Date().toISOString(),
-                          amountRequested: input.amountRequested,
+                        await handleSessionSubmit(input, intent, {
+                          token: token ?? "",
+                          router,
+                          setError,
+                          loadQueue,
+                          setQuote,
+                          setActiveQueueItem,
+                          setQuoteSheetOpen,
                         });
-                        router.push(
-                          getPaymentSessionRoute({
-                            sessionId: result.session.id,
-                            razorpay: {
-                              mode: result.razorpay.mode,
-                              paymentLinkUrl: result.razorpay.paymentLinkUrl,
-                            },
-                          })
-                        );
                       } catch (err: unknown) {
                         setError(getErrorMessage(err, "Failed to create session"));
                       }

@@ -30,7 +30,30 @@ describe("CreateSessionForm", () => {
       expect.objectContaining({
         modeSelection: "ORDERS_ONLY",
         amountRequested: 271.95,
-      })
+      }),
+      "SESSION_PAGE"
     );
+  });
+
+  it("keeps the direct Razorpay action hidden on small screens", () => {
+    render(
+      <CreateSessionForm
+        quote={{
+          queueItemType: "ORDER",
+          queueItemId: 101,
+          bookingId: 10,
+          anchorOrderId: 101,
+          bookingDue: 0,
+          ordersDueTotal: 271.95,
+          totalDue: 271.95,
+          allowedModes: ["ORDERS_ONLY"],
+        }}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+
+    const razorpayButton = screen.getByRole("button", { name: /open razorpay/i });
+    expect(razorpayButton.className).toMatch(/hidden/);
+    expect(razorpayButton.className).toMatch(/sm:inline-flex/);
   });
 });
