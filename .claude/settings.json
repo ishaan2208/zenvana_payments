@@ -1,0 +1,75 @@
+{
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git fetch *)",
+      "Bash(git log *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git checkout *)",
+      "Bash(git branch *)",
+      "Bash(git stash *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(find *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(mkdir *)",
+      "Bash(touch *)",
+      "Bash(cp *)",
+      "Bash(mv *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(pnpm *)",
+      "Bash(pnpx *)",
+      "Bash(turbo *)",
+      "Bash(node *)",
+      "Bash(tsc *)",
+      "Bash(jest *)",
+      "Bash(vitest *)",
+      "Bash(playwright *)",
+      "Bash(python *)",
+      "Bash(pip *)",
+      "Bash(pytest *)",
+      "Edit",
+      "Write",
+      "Read"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git push --force)",
+      "Bash(git reset --hard *)",
+      "Bash(sudo *)",
+      "Bash(npx prisma migrate reset *)",
+      "Bash(pnpm prisma migrate reset *)",
+      "Bash(prisma migrate reset *)"
+    ]
+  },
+  "fileCheckpointingEnabled": true,
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_response.filePath // empty' | { IFS= read -r f; case \"$f\" in *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs) [ -x node_modules/.bin/eslint ] && node_modules/.bin/eslint --fix --cache \"$f\";; esac; } 2>/dev/null || true",
+            "timeout": 45,
+            "statusMessage": "eslint --fix"
+          }
+        ]
+      }
+    ]
+  }
+}

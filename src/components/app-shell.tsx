@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   CreditCard,
@@ -12,9 +12,17 @@ import {
   Sun,
   Building2,
   UtensilsCrossed,
+  ChevronDown,
+  Loader2,
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
-import { clearPortalSession, getPortalProfile } from "@/lib/auth";
+import { clearPortalSession, getPortalProfile, getPortalToken } from "@/lib/auth";
+import {
+  type AccessibleScope,
+  listAccessibleScopes,
+  scopeKey,
+  switchActiveScope,
+} from "@/lib/scopes";
 import { useIsClient } from "@/lib/use-is-client";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +49,99 @@ function useTheme() {
     setDark((d) => !d);
   };
   return { dark, toggle };
+}
+
+/**
+ * Lets an admin switch the active property/restaurant the portal collects for.
+ * Mirrors web2's admin property switcher: it only appears for ADMIN logins with
+ * more than one accessible scope, and a hard reload after switching guarantees
+ * every scope-bound view (queue, history) reloads against the new token.
+ */
+function ScopeSwitcher({ isClient }: { isClient: boolean }) {
+  const token = useMemo(() => (isClient ? getPortalToken() : null), [isClient]);
+  const profile = useMemo(() => (isClient ? getPortalProfile() : null), [isClient]);
+  const isAdmin = String(profile?.role ?? "").toUpperCase() === "ADMIN";
+
+  const [scopes, setScopes] = useState<AccessibleScope[]>([]);
+  const [switching, setSwitching] = useState(false);
+
+  const currentKey = useMemo(() => {
+    if (!profile) return "";
+    if (profile.portalScope === "PROPERTY" && profile.propertyId != null) {
+      return scopeKey({ scopeType: "PROPERTY", scopeId: profile.propertyId });
+    }
+    if (profile.portalScope === "RESTAURANT" && profile.restaurantId != null) {
+      return scopeKey({ scopeType: "RESTAURANT", scopeId: profile.restaurantId });
+    }
+    return "";
+  }, [profile]);
+
+  useEffect(() => {
+    if (!token || !isAdmin) return;
+    let cancelled = false;
+    listAccessibleScopes(token)
+      .then((data) => {
+        if (!cancelled) setScopes(data.scopes ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setScopes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token, isAdmin]);
+
+  const onChange = useCallback(
+    async (value: string) => {
+      if (!token || switching || value === currentKey) return;
+      const [scopeType, idStr] = value.split(":");
+      const scopeId = Number(idStr);
+      if ((scopeType !== "PROPERTY" && scopeType !== "RESTAURANT") || !Number.isFinite(scopeId)) {
+        return;
+      }
+      setSwitching(true);
+      try {
+        await switchActiveScope(token, { scopeType, scopeId });
+        // Property-scoped state lives everywhere; a reload is the clean reset.
+        window.location.reload();
+      } catch {
+        setSwitching(false);
+      }
+    },
+    [token, switching, currentKey]
+  );
+
+  if (!isClient || !isAdmin || scopes.length <= 1) return null;
+
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-accent">
+        {switching ? (
+          <Loader2 className="size-3.5 animate-spin" />
+        ) : (
+          <Building2 className="size-3.5" />
+        )}
+      </span>
+      <select
+        aria-label="Switch property or restaurant"
+        value={currentKey}
+        disabled={switching}
+        onChange={(e) => void onChange(e.target.value)}
+        className="h-10 max-w-48 appearance-none truncate rounded-full border border-border/70 bg-card/60 pl-8 pr-8 text-xs font-semibold text-foreground backdrop-blur transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60 sm:max-w-64"
+      >
+        {scopes.map((scope) => {
+          const key = scopeKey(scope);
+          return (
+            <option key={key} value={key}>
+              {scope.scopeType === "RESTAURANT" ? "🍽 " : "🏨 "}
+              {scope.name}
+            </option>
+          );
+        })}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+    </div>
+  );
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -72,6 +173,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-2">
+            <ScopeSwitcher isClient={isClient} />
+
             <span className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground backdrop-blur sm:inline-flex">
               <ScopeIcon className="size-3.5 text-accent" />
               {scope === "RESTAURANT" ? "Restaurant" : "Property"}

@@ -1,3 +1,9 @@
+type RazorpayPrefill = {
+  name?: string;
+  email?: string;
+  contact?: string;
+};
+
 type RazorpayCheckoutInput = {
   keyId: string;
   orderId: string;
@@ -5,6 +11,9 @@ type RazorpayCheckoutInput = {
   currency: string;
   name?: string;
   description?: string;
+  prefill?: RazorpayPrefill;
+  themeColor?: string;
+  notes?: Record<string, string>;
   onSuccess?: () => void | Promise<void>;
   onDismiss?: () => void;
 };
@@ -49,6 +58,11 @@ export async function openRazorpayCheckout(input: RazorpayCheckoutInput): Promis
   await loadRazorpayCheckoutScript();
   if (!window.Razorpay) throw new Error("RAZORPAY_UNAVAILABLE");
 
+  const prefill: RazorpayPrefill = {};
+  if (input.prefill?.name) prefill.name = input.prefill.name;
+  if (input.prefill?.email) prefill.email = input.prefill.email;
+  if (input.prefill?.contact) prefill.contact = input.prefill.contact;
+
   return new Promise((resolve, reject) => {
     const rzp = new window.Razorpay!({
       key: input.keyId,
@@ -57,6 +71,9 @@ export async function openRazorpayCheckout(input: RazorpayCheckoutInput): Promis
       currency: input.currency,
       name: input.name ?? "Zenvana",
       description: input.description ?? "Payment collection",
+      ...(Object.keys(prefill).length ? { prefill } : {}),
+      ...(input.notes ? { notes: input.notes } : {}),
+      theme: { color: input.themeColor ?? "#001F3D" },
       handler: async () => {
         try {
           await input.onSuccess?.();

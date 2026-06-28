@@ -67,6 +67,10 @@ type SessionCreateResponse = {
     amount?: number;
     currency?: string;
     paymentLinkUrl?: string;
+    name?: string;
+    description?: string;
+    themeColor?: string;
+    prefill?: { name?: string; contact?: string; email?: string };
   };
 };
 
@@ -121,7 +125,8 @@ async function handleSessionSubmit(
   });
 
   if (intent === "RAZORPAY_DIRECT") {
-    const { keyId, orderId, amount, currency } = result.razorpay;
+    const { keyId, orderId, amount, currency, name, description, themeColor, prefill } =
+      result.razorpay;
     if (!keyId || !orderId || amount == null) {
       finishSessionCreate(result, input, loadQueue, setQuote, setActiveQueueItem, setQuoteSheetOpen);
       router.push(paymentRoute);
@@ -136,6 +141,10 @@ async function handleSessionSubmit(
         orderId,
         amount,
         currency: currency ?? "INR",
+        name,
+        description,
+        themeColor,
+        prefill,
         onSuccess: async () => {
           await apiPost(`/sessions/${result.session.id}/verify`, {}, token);
           router.push(`/payment/${result.session.id}`);
