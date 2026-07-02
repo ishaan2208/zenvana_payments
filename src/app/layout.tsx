@@ -4,6 +4,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { InitialSplash } from "@/components/InitialSplash";
 import { AppShell } from "@/components/app-shell";
+import { PaytmNoticeGate } from "@/components/paytm-notice-gate";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -37,8 +38,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
-          <InitialSplash />
-          <AppShell>{children}</AppShell>
+          <PaytmNoticeGate>
+            <InitialSplash />
+            <AppShell>{children}</AppShell>
+          </PaytmNoticeGate>
         </ThemeProvider>
       </body>
     </html>
