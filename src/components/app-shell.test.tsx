@@ -9,7 +9,9 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/auth", () => ({
   clearPortalProfile: vi.fn(),
   clearPortalToken: vi.fn(),
+  clearPortalSession: vi.fn(),
   getPortalProfile: () => null,
+  getPortalToken: () => null,
 }));
 
 vi.mock("./theme-toggle", () => ({

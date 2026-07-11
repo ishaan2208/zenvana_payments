@@ -52,14 +52,55 @@ function useTheme() {
 }
 
 /**
+ * AppShell lives in the root layout, so it stays mounted across login → dashboard.
+ * Token/profile are written during login; re-read them whenever the route changes
+ * (and on storage updates) instead of memoizing once on first client paint.
+ */
+function usePortalSession(isClient: boolean) {
+  const pathname = usePathname();
+  const [token, setToken] = useState<string | null>(null);
+  const [profile, setProfile] = useState<ReturnType<typeof getPortalProfile>>(null);
+
+  useEffect(() => {
+    if (!isClient) {
+      setToken(null);
+      setProfile(null);
+      return;
+    }
+
+    const refresh = () => {
+      setToken(getPortalToken());
+      setProfile(getPortalProfile());
+    };
+
+    refresh();
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "paymentsPortalProfile" || event.key === null) refresh();
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [isClient, pathname]);
+
+  return { token, profile };
+}
+
+/**
  * Lets an admin switch the active property/restaurant the portal collects for.
  * Mirrors web2's admin property switcher: it only appears for ADMIN logins with
  * more than one accessible scope, and a hard reload after switching guarantees
  * every scope-bound view (queue, history) reloads against the new token.
  */
-function ScopeSwitcher({ isClient }: { isClient: boolean }) {
-  const token = useMemo(() => (isClient ? getPortalToken() : null), [isClient]);
-  const profile = useMemo(() => (isClient ? getPortalProfile() : null), [isClient]);
+function ScopeSwitcher({
+  isClient,
+  token,
+  profile,
+}: {
+  isClient: boolean;
+  token: string | null;
+  profile: ReturnType<typeof getPortalProfile>;
+}) {
   const isAdmin = String(profile?.role ?? "").toUpperCase() === "ADMIN";
 
   const [scopes, setScopes] = useState<AccessibleScope[]>([]);
@@ -77,7 +118,10 @@ function ScopeSwitcher({ isClient }: { isClient: boolean }) {
   }, [profile]);
 
   useEffect(() => {
-    if (!token || !isAdmin) return;
+    if (!token || !isAdmin) {
+      setScopes([]);
+      return;
+    }
     let cancelled = false;
     listAccessibleScopes(token)
       .then((data) => {
@@ -149,7 +193,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const isClient = useIsClient();
   const { dark, toggle } = useTheme();
-  const profile = useMemo(() => (isClient ? getPortalProfile() : null), [isClient]);
+  const { token, profile } = usePortalSession(isClient);
   const scope = profile?.portalScope ?? "PROPERTY";
   const ScopeIcon = scope === "RESTAURANT" ? UtensilsCrossed : Building2;
 
@@ -173,7 +217,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
 
           <div className="flex items-center gap-2">
-            <ScopeSwitcher isClient={isClient} />
+            <ScopeSwitcher isClient={isClient} token={token} profile={profile} />
 
             <span className="hidden items-center gap-1.5 rounded-full border border-border/70 bg-card/60 px-3 py-1.5 text-xs font-semibold text-muted-foreground backdrop-blur sm:inline-flex">
               <ScopeIcon className="size-3.5 text-accent" />
